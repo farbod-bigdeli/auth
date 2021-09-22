@@ -4,9 +4,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"math/rand"
-
+	
+	"example.com/models/common"
 	"example.com/models/database"
 	"example.com/models/jwt"
 	"example.com/models/models"
@@ -66,8 +65,8 @@ func SendSignUpSMS(ct *gin.Context) {
 	}
 	//TODO sms
 	v := VerificationCodes{
-		VerifyCode: rand.Intn(99999-10000)+10000,
-		TempCode: rand.Intn(99999-10000)+10000,
+		VerifyCode: common.RandInt(10000, 99999),
+		TempCode: common.RandInt(10000, 99999),
 		Type: Signup_sms,
 
 	}
@@ -90,7 +89,7 @@ func Signup(ct *gin.Context) {
 	}
 	if checkCode(v, Signup_sms){
 		//TODO password
-		password := strconv.Itoa(rand.Intn(999999-100000)+100000)
+		password := strconv.Itoa(common.RandInt(1000000, 9999999))
 		userInfo := &model.UserInfo{
 			User: model.User{
 				Username: v.Username,
@@ -182,8 +181,8 @@ func Login(ct *gin.Context) {
 		//TODO sms
 
 		v := VerificationCodes{
-			VerifyCode: rand.Intn(99999-10000)+10000,
-			TempCode: rand.Intn(99999-10000)+10000,
+			VerifyCode: common.RandInt(10000, 99999),
+			TempCode: common.RandInt(10000, 99999),
 			Type: Login_sms,
 			UserID: int(user.ID),
 	
