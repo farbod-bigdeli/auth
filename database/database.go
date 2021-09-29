@@ -23,5 +23,24 @@ func InitDB() {
 		panic(err)
 	}
 	db.AutoMigrate(&model.ProofState{}, &model.User{}, &model.UserInfo{},&model.ProofType{}, &model.UserProof{})
+	var proofStates []model.ProofState = []model.ProofState{
+		{
+			State: "Not verified",
+		},
+		{
+			State: "Verified",
+		},
+	}
+	db.Create(&proofStates)
+
+	var proofTypes []model.ProofType = []model.ProofType{
+		{
+			Description	: "Commitment",
+		},
+		{
+			Description	: "CardNumber",
+		},
+	}
+	db.Create(&proofTypes)
 
 }

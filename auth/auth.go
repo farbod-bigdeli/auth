@@ -1,15 +1,16 @@
 package auth
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	
-	"example.com/models/common"
+
 	"example.com/models/database"
 	"example.com/models/jwt"
 	"example.com/models/models"
 	"example.com/models/notification"
+	"example.com/models/util"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,6 +53,7 @@ type LoginVerifyInputs struct {
 	TempCode		int		`json:"tempCode" binding:"required"`
 }
 
+
 var PhoneVerifications = make(map[string]VerificationCodes)
 
 func SendSignUpSMS(ct *gin.Context) {
@@ -63,10 +65,12 @@ func SendSignUpSMS(ct *gin.Context) {
 		})
 		return
 	}
-	//TODO sms
+	//TODO rand
 	v := VerificationCodes{
-		VerifyCode: common.RandInt(10000, 99999),
-		TempCode: common.RandInt(10000, 99999),
+		VerifyCode: 12345,
+		// util.RandInt(10000, 99999),
+		TempCode: 12345,
+		// util.RandInt(10000, 99999),
 		Type: Signup_sms,
 
 	}
@@ -89,7 +93,7 @@ func Signup(ct *gin.Context) {
 	}
 	if checkCode(v, Signup_sms){
 		//TODO password
-		password := strconv.Itoa(common.RandInt(1000000, 9999999))
+		password := strconv.Itoa(util.RandInt(1000000, 9999999))
 		userInfo := &model.UserInfo{
 			User: model.User{
 				Username: v.Username,
@@ -120,7 +124,7 @@ func Signup(ct *gin.Context) {
 
 
 func GetUser(ct *gin.Context) {
-	if tokenString := extractToken(ct); tokenString != ""{
+	if tokenString := ExtractToken(ct); tokenString != ""{
 		if claims, err := jwt.VerifyToken(tokenString); err == nil {
 			ct.JSON(http.StatusOK, gin.H{
 				"user": claims["user_id"],
@@ -133,8 +137,40 @@ func GetUser(ct *gin.Context) {
 	ct.JSON(http.StatusUnauthorized,"Unauthorized.")
 }
 
+func GetUserWithToken(ct *gin.Context) {
+	if tokenString := ExtractToken(ct); tokenString != ""{
+		if claims, err := jwt.VerifyToken(tokenString); err == nil {
+			userID := claims["user_id"]
+			userInfo := model.UserInfo{}
+			db := database.GetExec()
+			result := db.Preload("User").First(&userInfo, "user_id = ?", userID)
+			fmt.Println(userInfo)
+			if result.Error == nil && result.RowsAffected == 1 {
+				//TODO real name 
+
+				ct.JSON(http.StatusOK, gin.H{
+					"firstName": "ali", 
+					// userInfo.FaName,
+					"lastName": "bigi",
+					"verified": userInfo.User.IsVerified(),
+					// userInfo.FaFamily,
+					"username": userInfo.User.Username,
+					"userLevel": 1,
+				})
+				return
+			}
+			ct.JSON(http.StatusInternalServerError, "Failed")
+
+
+		} 
+
+	}
+
+	ct.JSON(http.StatusUnauthorized,"Unauthorized.")
+}
+
 func LogOut(ct *gin.Context) {
-	if tokenString := extractToken(ct); tokenString != ""{
+	if tokenString := ExtractToken(ct); tokenString != ""{
 		jwt.InvalidateToken(tokenString)
 		ct.JSON(http.StatusOK, "Successful")
 		return
@@ -181,8 +217,8 @@ func Login(ct *gin.Context) {
 		//TODO sms
 
 		v := VerificationCodes{
-			VerifyCode: common.RandInt(10000, 99999),
-			TempCode: common.RandInt(10000, 99999),
+			VerifyCode: util.RandInt(10000, 99999),
+			TempCode: util.RandInt(10000, 99999),
 			Type: Login_sms,
 			UserID: int(user.ID),
 	
@@ -238,7 +274,10 @@ func VerifyLogin(ct *gin.Context) {
 
 }
 
-func extractToken (ct *gin.Context) string {
+
+
+
+func ExtractToken (ct *gin.Context) string {
 	bearToken := ct.GetHeader("Authorization")
 	strArr := strings.Split(bearToken, " ")
 	if len(strArr) == 2 {
