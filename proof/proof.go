@@ -14,10 +14,20 @@ import (
 )
 
 
+type ProofType int
+
+type ProofState int
+
 
 const(
-	Commitment 	int = 1
-	BankAccount int = 2
+	Commitment 		ProofType = 1
+	BankAccount 	ProofType = 2
+
+)
+
+const(
+	NotVerified 	ProofState = 1
+	Verified 		ProofState = 2
 
 )
 
@@ -45,16 +55,17 @@ func Store(c *gin.Context)  {
 	proof := model.UserProof{
 		UserID: int(claims["user_id"].(float64)),
 	}
-	switch proofType {
+	pt := ProofType(proofType)
+	switch pt {
 	case Commitment:
-		proof.ProofTypeID = Commitment
+		proof.ProofTypeID = int(Commitment)
 		proof.Path, err = util.UploadPhoto(*c, "commitment/")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, "Invalid photo")
 			return
 		}
 	case BankAccount:
-		proof.ProofTypeID = BankAccount
+		proof.ProofTypeID = int(BankAccount)
 		cardNumber := c.Request.FormValue("cardNumber")
 		bankName := c.Request.FormValue("bankName")
 		shebaNumber := c.Request.FormValue("shebaNumber")
