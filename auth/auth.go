@@ -29,6 +29,7 @@ type VerificationCodes struct {
 	Type		SMSType
 	UserID		int
 	TrackID		string `json:"trackID"`
+	Finnotech
 }
 
 type SMSType string
