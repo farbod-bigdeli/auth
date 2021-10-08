@@ -11,6 +11,7 @@ func SendSMS(message string, receptor []string) {
 	fmt.Println(message, receptor)
 	apiKey := os.Getenv("SMS_API_KEY")
 	api := kavenegar.New(apiKey)
+	api.Call.MakeTTS(receptor[0], message, nil)
 	sender := "REDACTED"                 
 	if res, err := api.Message.Send(sender, receptor, message, nil); err != nil {
 		switch err := err.(type) {
