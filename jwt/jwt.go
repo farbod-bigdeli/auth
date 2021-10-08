@@ -14,16 +14,14 @@ func CreateToken(userId int) (string, error) {
 	atClaims := jwt.MapClaims{
 		"authorized": true,
 		"user_id": userId,
-		"exp": time.Now().Add(time.Second * 30).Unix(),
+		"exp": time.Now().Add(time.Minute * 30).Unix(),
 	}
 	at := jwt.NewWithClaims(jwt.SigningMethodHS256, atClaims)
 
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
 		panic("jwt key not found")
-	}
-	fmt.Println("->>>>>>>>")
-	
+	}	
 	token,err := at.SignedString([]byte(secret))
 	if err != nil {
 		return "", err

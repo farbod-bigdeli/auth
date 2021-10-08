@@ -1,0 +1,26 @@
+version: '3.4'
+
+services:
+  auth:
+    image: auth:0.0.5
+
+  rp:
+    image: reverseproxy:0.0.2
+    ports:
+      - "8000:80"
+
+  db:
+    image: postgres:13.3-alpine
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: REDACTED
+      POSTGRES_DB: pg1
+      # Un-comment to access the db service directly
+    ports:
+      - "9001:5432"
+    restart: unless-stopped
+    volumes:
+      -   /usr/local/docker-data/postgres/data:/var/lib/postgresql/data
+      -  ./sql:/docker-entrypoint-initdb.d/
+

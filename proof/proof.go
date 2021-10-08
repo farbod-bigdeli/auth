@@ -6,30 +6,26 @@ import (
 	"strconv"
 
 	"example.com/models/auth"
+	"example.com/models/bankAccount"
 	"example.com/models/database"
 	"example.com/models/jwt"
-	model "example.com/models/models"
+	"example.com/models/model"
 	"example.com/models/util"
+
+
 	"github.com/gin-gonic/gin"
 )
 
 
-type ProofType int
 
-type ProofState int
+type BankAccount struct {
+	Card		string
+	Iban		string
+	BankCode 	string
+	BankName	string
+}
 
 
-const(
-	Commitment 		ProofType = 1
-	BankAccount 	ProofType = 2
-
-)
-
-const(
-	NotVerified 	ProofState = 1
-	Verified 		ProofState = 2
-
-)
 
 
 func Store(c *gin.Context)  {
@@ -52,29 +48,40 @@ func Store(c *gin.Context)  {
 		c.JSON(http.StatusBadRequest, "Invalid type")
 		return
 	}
+	userID := int(claims["user_id"].(float64))
 	proof := model.UserProof{
-		UserID: int(claims["user_id"].(float64)),
+		UserID: userID,
 	}
-	pt := ProofType(proofType)
-	switch pt {
-	case Commitment:
-		proof.ProofTypeID = int(Commitment)
+	switch proofType {
+
+	case model.CommitmentProofType:
+		proof.ProofTypeID = model.CommitmentProofType
+		proof.ProofStateId = model.FullVerifiedState
 		proof.Path, err = util.UploadPhoto(*c, "commitment/")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, "Invalid photo")
 			return
 		}
-	case BankAccount:
-		proof.ProofTypeID = int(BankAccount)
-		cardNumber := c.Request.FormValue("cardNumber")
-		bankName := c.Request.FormValue("bankName")
-		shebaNumber := c.Request.FormValue("shebaNumber")
-
-		if cardNumber == "" || bankName == "" || shebaNumber == "" {
+	case model.BankAccountProofType:
+		proof.ProofTypeID = model.BankAccountProofType
+		bankAccount := bankaccount.BankAccount{
+			Card: c.Request.FormValue("cardNumber"),
+			Iban: c.Request.FormValue("shebaNumber"),
+			BankCode: c.Request.FormValue("bankCode"),
+			BankName: c.Request.FormValue("bankName"),
+		}
+		
+		if !bankAccount.CheckBankAccountInput() {
 			c.JSON(http.StatusBadRequest, "Invalid input")
 			return
 		}
-		proof.Path = bankName + "-" + cardNumber + "-" + shebaNumber
+			//TODO verify bank account
+			// if !bankAccount.VerifyBankAccount() {
+			// 	c.JSON(http.StatusBadRequest, "Invalid card or sheba")
+			// 	return
+			// }
+		proof.ProofStateId = model.FullVerifiedState
+		proof.Path = bankAccount.ToString()
 
 	default :
 		c.JSON(http.StatusBadRequest, "Invalid type")
@@ -85,7 +92,14 @@ func Store(c *gin.Context)  {
 	db := database.GetExec();
 	if db.Create(&proof).Error == nil {
 		c.JSON(http.StatusOK, "Successful")
+		return
 
 	}
 	c.JSON(http.StatusForbidden, "Failed")
 }
+
+
+
+
+
+

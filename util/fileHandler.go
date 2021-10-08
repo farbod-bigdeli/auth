@@ -10,7 +10,7 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-const BasePath = "storage/"
+const BasePath = "/app/storage/"
 
 func UploadPhoto(c gin.Context, path string) (string, error) {
 	file, header, err := c.Request.FormFile("photo")
