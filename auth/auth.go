@@ -24,12 +24,12 @@ type SignUpPhone struct {
 }
 
 type VerificationCodes struct {
-	VerifyCode	int		`json:"verifyCode"`
-	TempCode	int		`json:"tempCode"`
-	Type		SMSType
-	UserID		int
-	TrackID		string `json:"trackID"`
-	Finnotech
+	VerifyCode		int		`json:"verifyCode"`
+	TempCode		int		`json:"tempCode"`
+	Type			SMSType
+	UserID			int
+	TrackID			string `json:"trackID"`
+	FinnotechToken  string	
 }
 
 type SMSType string
@@ -70,7 +70,7 @@ const (
 )
 
 const (
-	CoreNewUser string = "http://192.168.160.207:22216/newuser"
+	CoreNewUser string = "http://app1.tabachain.com/newuser"
 )
 type FinnotechSendSMSResponse struct {
 	Result struct {
