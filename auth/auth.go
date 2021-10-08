@@ -154,105 +154,114 @@ func Signup(ct *gin.Context) {
 		return
 	}
 	if checkCode(v, Signup_sms){
-
-		jsonBody, _ := json.Marshal(map[string]string{
-			"mobile": v.Phone,
-			"otp":	strconv.Itoa(v.VerifyCode),
-			"nid":	v.Ssn,
-			"trackId":	PhoneVerifications[v.Phone].TrackID,	
-
-		})
 		client := &http.Client{
 			Timeout: time.Second * 10,
 		}
-		req, _ := http.NewRequest("POST", FinnotechVerifySMS, bytes.NewBuffer(jsonBody))
-		req.Header.Add("Authorization","bearer " + os.Getenv("FINNOTECH_AUTHORIZE_STRING"))
-		req.Header.Set("Content-Type","application/json")
-		res, err := client.Do(req)
-
-		if err != nil {
-			ct.JSON(http.StatusBadRequest, gin.H{
-				"message": "Failed",
+		finnotechToken := ""
+		val, ok := PhoneVerifications[v.Phone]
+		if !ok || val.FinnotechToken == "" {
+			jsonBody, _ := json.Marshal(map[string]string{
+				"mobile": v.Phone,
+				"otp":	strconv.Itoa(v.VerifyCode),
+				"nid":	v.Ssn,
+				"trackId":	PhoneVerifications[v.Phone].TrackID,	
+	
 			})
-			return
-		}
-		r := struct{
-			Result struct {
-				Code string `json:"code"`
-			} `json:"result"`
-			Status string `json:"status"`
-		}{} 
-		err = json.NewDecoder(res.Body).Decode(&r)
-		if err != nil || r.Status != "DONE" {
-			ct.JSON(http.StatusBadRequest, gin.H{
-				"message": "Failed",
+	
+			req, _ := http.NewRequest("POST", FinnotechVerifySMS, bytes.NewBuffer(jsonBody))
+			req.Header.Add("Authorization","Basic " + os.Getenv("FINNOTECH_AUTHORIZE_STRING"))
+			req.Header.Set("Content-Type","application/json")
+			res, err := client.Do(req)
+	
+			if err != nil {
+				ct.JSON(http.StatusBadRequest, gin.H{
+					"message": "Failed",
+				})
+				return
+			}
+			r := struct{
+				Result struct {
+					Code string `json:"code"`
+				} `json:"result"`
+				Status string `json:"status"`
+			}{} 
+			err = json.NewDecoder(res.Body).Decode(&r)
+			if err != nil || r.Status != "DONE" {
+				ct.JSON(http.StatusBadRequest, gin.H{
+					"message": "Failed",
+				})
+				return
+			}
+	
+			jsonBody, _ = json.Marshal(map[string]string{
+				"grant_type": "authorization_code",
+				"code": r.Result.Code,
+				"auth_type": "SMS",
+				"redirect_uri": "REDACTED",
+	
 			})
-			return
+			req, _ = http.NewRequest("POST", FinnotechGetToken, bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type","application/json")
+			req.Header.Add("Authorization","Basic " + os.Getenv("FINNOTECH_AUTHORIZE_STRING"))
+			res, err = client.Do(req)
+	
+			if err != nil {
+				fmt.Println(err.Error())
+				ct.JSON(http.StatusBadRequest, gin.H{
+					"message": "Failed",
+				})
+				return
+			}
+			r1 := struct {
+				Result struct {
+					ClientID     string   `json:"clientId"`
+					Scopes       []string `json:"scopes"`
+					LifeTime     string   `json:"lifeTime"`
+					Type         string   `json:"type"`
+					CreationDate string   `json:"creationDate"`
+					UserID       string   `json:"userId"`
+					AuthType     string   `json:"auth_type"`
+					RefreshToken string   `json:"refreshToken"`
+					Bank         string   `json:"bank"`
+					Value        string   `json:"value"`
+				} `json:"result"`
+				Status string `json:"status"`
+			}{}
+			err = json.NewDecoder(res.Body).Decode(&r1)
+			if err != nil || r1.Status != "DONE" {
+				ct.JSON(http.StatusBadRequest, gin.H{
+					"message": "Failed",
+				})
+				return
+			}
+			val = PhoneVerifications[v.Phone]
+			val.FinnotechToken = r1.Result.Value
+			PhoneVerifications[v.Phone] = val
+			finnotechToken = r1.Result.Value
+	
+		} else {
+			finnotechToken = PhoneVerifications[v.Phone].FinnotechToken
 		}
-
-		jsonBody, _ = json.Marshal(map[string]string{
-			"grant_type": "authorization_code",
-			"code": r.Result.Code,
-			"auth_type": "SMS",
-			"redirect_uri": "REDACTED",
-
-		})
-		req, _ = http.NewRequest("POST", FinnotechGetToken, bytes.NewBuffer(jsonBody))
-		req.Header.Set("Content-Type","application/json")
-		req.Header.Add("Authorization","Basic " + os.Getenv("FINNOTECH_AUTHORIZE_STRING"))
-		res, err = client.Do(req)
-
-		if err != nil {
-			fmt.Println(err.Error())
-			ct.JSON(http.StatusBadRequest, gin.H{
-				"message": "Failed",
-			})
-			return
-		}
-		r1 := struct {
-			Result struct {
-				ClientID     string   `json:"clientId"`
-				Scopes       []string `json:"scopes"`
-				LifeTime     string   `json:"lifeTime"`
-				Type         string   `json:"type"`
-				CreationDate string   `json:"creationDate"`
-				UserID       string   `json:"userId"`
-				AuthType     string   `json:"auth_type"`
-				RefreshToken string   `json:"refreshToken"`
-				Bank         string   `json:"bank"`
-				Value        string   `json:"value"`
-			} `json:"result"`
-			Status string `json:"status"`
-		}{}
-		fmt.Println(r1)
-		err = json.NewDecoder(res.Body).Decode(&r1)
-		if err != nil || r1.Status != "DONE" {
-			ct.JSON(http.StatusBadRequest, gin.H{
-				"message": "Failed",
-			})
-			return
-		}
-
-
-		req, _ = http.NewRequest("GET", FinnotechNidVerification + v.Ssn + "/sms/nidVerification", nil)
-		q := req.URL.Query()
+	
+		req1, _ := http.NewRequest("GET", FinnotechNidVerification + v.Ssn + "/sms/nidVerification", nil)
+		q := req1.URL.Query()
 		//TODO read env
 		q.Add("birthDate", v.Birthdate)
 		q.Add("gender", v.Gender)
 		q.Add("firstName", v.FName)
 		q.Add("lastName", v.LName)
-
-
-		req.URL.RawQuery = q.Encode()
-		req.Header.Add("Authorization","bearer " + r1.Result.Value)
-		res, err = client.Do(req)
-		if err != nil || res.StatusCode != 200 {
+	
+	
+		req1.URL.RawQuery = q.Encode()
+		req1.Header.Add("Authorization","bearer " + finnotechToken)
+		res1, err := client.Do(req1)
+		if err != nil || res1.StatusCode != 200 {
 			ct.JSON(http.StatusBadRequest, gin.H{
 				"message": "Failed",
 			})
 			return
 		}
-
+	
 		r2 := struct {
 			TrackID string `json:"trackId"`
 			Result  struct {
@@ -269,18 +278,18 @@ func Signup(ct *gin.Context) {
 			} `json:"result"`
 			Status string `json:"status"`
 		}{}
-		err = json.NewDecoder(res.Body).Decode(&r2)
-
+		err = json.NewDecoder(res1.Body).Decode(&r2)
+	
 		if err != nil || r2.Status != "DONE" || r2.Result.GenderSimilarity < 100 || r2.Result.FirstNameSimilarity < 100 || r2.Result.LastNameSimilarity < 100  {
 			ct.JSON(http.StatusBadRequest, gin.H{
 				"message": "information not match",
 			})
 			return 
 		}
-
-		fmt.Println("dbbbbbbbbbbbbbb")
+	
+		fmt.Println("store user db")
 		//TODO password
-		password := strconv.Itoa(util.RandInt(1000000, 9999999))
+		password := strconv.Itoa(util.RandInt(10000, 99999))
 		userInfo := &model.UserInfo{
 			User: model.User{
 				Username: v.Username,
@@ -289,9 +298,10 @@ func Signup(ct *gin.Context) {
 			Phone: v.Phone,
 			FaName: v.FName,
 			FaFamily: v.LName,
+			NationalID: v.Ssn,
 		}
 		db := database.GetExec()
-
+	
 		if db.Create(userInfo).Error == nil {
 			token, _ :=jwt.CreateToken(userInfo.UserID);
 			ct.JSON(http.StatusOK, gin.H{
@@ -304,11 +314,11 @@ func Signup(ct *gin.Context) {
 				jsonBody,_ := json.Marshal(map[string]string{
 					"uid": userInfo.User.UID.String(),
 				})
-				req, _ = http.NewRequest("POST", CoreNewUser, bytes.NewBuffer(jsonBody))
-				req.Header.Set("Content-Type","application/json")
-				res, err = client.Do(req)
-				if err != nil || res.StatusCode != 200 {
-					fmt.Println("core failed", res.StatusCode)
+				req2, _ := http.NewRequest("POST", CoreNewUser, bytes.NewBuffer(jsonBody))
+				req2.Header.Set("Content-Type","application/json")
+				res2, err := client.Do(req2)
+				if err != nil || res2.StatusCode != 200 {
+					fmt.Println("core new user failed")
 				}
 			}()
 			return
