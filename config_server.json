@@ -1,0 +1,11 @@
+{
+    "localPort":":80",
+    "envPath": "/app/.env",
+    "dbHost": "db",
+    "dbUserName": "admin",
+    "dbName": "pg1",
+    "dbPassword": "REDACTED",
+    "dbPort": "5432",
+    "baseFilePath": "/app/storage/"
+
+}

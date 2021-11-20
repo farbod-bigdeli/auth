@@ -1,0 +1,10 @@
+{
+    "localPort":":8000",
+    "envPath": ".env",
+    "dbHost": "localhost",
+    "dbUserName": "admin",
+    "dbName": "pg2",
+    "dbPassword": "REDACTED",
+    "dbPort": "22201",
+    "baseFilePath": "storage/"
+}

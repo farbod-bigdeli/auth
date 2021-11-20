@@ -5,10 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"example.com/models/auth"
 	"example.com/models/bankAccount"
 	"example.com/models/database"
-	"example.com/models/jwt"
 	"example.com/models/model"
 	"example.com/models/util"
 
@@ -18,28 +16,14 @@ import (
 
 
 
-type BankAccount struct {
-	Card		string
-	Iban		string
-	BankCode 	string
-	BankName	string
-}
+
 
 
 
 
 func Store(c *gin.Context)  {
-
-	tokenString := auth.ExtractToken(c);
-	if  tokenString == "" {
-		c.JSON(http.StatusBadRequest, "Token not found")
-		return
-	}
-	 claims, err := jwt.VerifyToken(tokenString)
-	 if  err != nil {
-		c.JSON(http.StatusBadRequest, "Invalid token")
-		return
-	}
+	db := database.GetExec();
+	userID := c.MustGet("userId").(int)
 	proofTypeString := c.Request.FormValue("type")
 	proofType, err := strconv.Atoi(proofTypeString)
 	fmt.Printf("%T   %v", proofType, proofType )
@@ -48,7 +32,6 @@ func Store(c *gin.Context)  {
 		c.JSON(http.StatusBadRequest, "Invalid type")
 		return
 	}
-	userID := int(claims["user_id"].(float64))
 	proof := model.UserProof{
 		UserID: userID,
 	}
@@ -59,7 +42,10 @@ func Store(c *gin.Context)  {
 		proof.ProofStateId = model.FullVerifiedState
 		proof.Path, err = util.UploadPhoto(*c, "commitment/")
 		if err != nil {
-			c.JSON(http.StatusBadRequest, "Invalid photo")
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message":"Invalid photo",
+				"status": err.Error(),
+			})
 			return
 		}
 	case model.BankAccountProofType:
@@ -75,21 +61,33 @@ func Store(c *gin.Context)  {
 			c.JSON(http.StatusBadRequest, "Invalid input")
 			return
 		}
-			//TODO verify bank account
-			// if !bankAccount.VerifyBankAccount() {
-			// 	c.JSON(http.StatusBadRequest, "Invalid card or sheba")
-			// 	return
-			// }
+		err := bankAccount.VerifyBankAccount(userID)
+		//TODO check owner
+		// err1 := bankAccount.CheckIsBankAccountOwner(userID)
+
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "verification failed",
+				"status": err.Error(),
+			})
+			return
+		}
 		proof.ProofStateId = model.FullVerifiedState
 		proof.Path = bankAccount.ToString()
-
+		p := model.UserProof{}
+		if db.Last(&p, "path = ? AND user_id = ?", proof.Path, userID).Error == nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "card exists",
+				"status": "duplicateCard",
+			})
+			return
+		}
 	default :
 		c.JSON(http.StatusBadRequest, "Invalid type")
 		return
 	
 	}
 
-	db := database.GetExec();
 	if db.Create(&proof).Error == nil {
 		c.JSON(http.StatusOK, "Successful")
 		return
@@ -98,6 +96,19 @@ func Store(c *gin.Context)  {
 	c.JSON(http.StatusForbidden, "Failed")
 }
 
+
+func GetBankAccount(ct *gin.Context) {
+	userID := ct.MustGet("userId")
+	db := database.GetExec()
+	var p []model.UserProof
+	db.Find(&p,"user_id = ? AND proof_type_id = ?", userID, model.BankAccountProofType)
+
+	var res []*bankaccount.BankAccount = []*bankaccount.BankAccount{}
+	for _, v := range p {
+		res = append(res, bankaccount.BuildFromString(v.Path))
+	}
+	ct.JSON(http.StatusOK, res)
+}
 
 
 

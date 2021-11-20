@@ -15,6 +15,8 @@ RUN cd /app && mkdir storage
 RUN mkdir storage
 COPY --from=builder /app/main /app/
 COPY .env /app/
+COPY config_server.json /app/
+
 
 EXPOSE 8080
 # CMD ["go","run","."]

@@ -7,13 +7,15 @@ import (
 	"github.com/kavenegar/kavenegar-go"
 )
 
-func SendSMS(message string, receptor []string) {
+func SendSMS(message string, receptor []string, pattern string) {
 	fmt.Println(message, receptor)
 	apiKey := os.Getenv("SMS_API_KEY")
 	api := kavenegar.New(apiKey)
-	api.Call.MakeTTS(receptor[0], message, nil)
-	sender := "REDACTED"                 
-	if res, err := api.Message.Send(sender, receptor, message, nil); err != nil {
+	params := &kavenegar.VerifyLookupParam{
+	}
+	// api.Call.MakeTTS(receptor[0], message, nil)
+	// sender := "REDACTED"
+	if res, err := api.Verify.Lookup(receptor[0], pattern, message, params); err != nil {
 		switch err := err.(type) {
 		case *kavenegar.APIError:
 			fmt.Println(err.Error(), err.Status)
@@ -23,10 +25,10 @@ func SendSMS(message string, receptor []string) {
 			fmt.Println(err.Error())
 		}
 	} else {
-		for _, r := range res {
-			fmt.Println("MessageID 	= ", r.MessageID)
-			fmt.Println("Status    	= ", r.Status)
-			//...
-		}
+		// for _, r := range res {
+			fmt.Println("MessageID 	= ", res.MessageID)
+			fmt.Println("Status    	= ", res.Status)
+		// }
+
 	}
 }

@@ -1,18 +1,38 @@
 package database
 
 import (
+	"fmt"
+	"sync"
+
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"example.com/models/config"
+
 )
 
+var once = sync.Once{}
 
-func GetExec() (*gorm.DB) {
-	dsn := "host=db dbname=pg1 user=admin password=REDACTED port=5432 sslmode=disable"
-	db, err := gorm.Open(postgres.Open(dsn))
+var g_db *gorm.DB = nil
+
+func createDB() {
+	host := config.Config.DBHost
+	dbName := config.Config.DBName
+	port := config.Config.DBPort
+	password := config.Config.DBPassword
+	dsn  := fmt.Sprintf("host=%s dbname=%s user=admin password=%s port=%s sslmode=disable", host, dbName, password, port)
+
+	sql := postgres.Open(dsn)
+	db, err := gorm.Open(sql)
 	if err != nil {
 		panic(err)
 	}
-	return db
+	g_db = db
+}
+
+func GetExec() *gorm.DB {
+	once.Do(createDB)
+
+	return g_db
 }
 
 // func InitDB() {

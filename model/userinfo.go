@@ -23,7 +23,8 @@ type UserInfo struct {
 	Tel						string			
 	NationalID				string		
 	BirthCertificateID		string		
-	Nationality	 			string		
+	Nationality	 			string
+	Gender					string		
 	
 
 }

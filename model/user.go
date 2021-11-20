@@ -27,6 +27,17 @@ func (u *User) BeforeCreate(tx *gorm.DB) (err error) {
 
 }
 
+func (u *User) BeforeUpdate(tx *gorm.DB) (err error) {
+	hash, err :=  bcrypt.GenerateFromPassword([]byte(u.Password), 10)
+	if err != nil {
+		return err
+	}
+	u.Password = string(hash)
+	return
+
+
+}
+
 func (u *User) CheckPassword(password string) error {
 	bytePassword := []byte(password)
 	byteHashedPassword := []byte(u.Password)

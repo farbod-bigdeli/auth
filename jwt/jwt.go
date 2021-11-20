@@ -8,13 +8,15 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-var tokens = map[string]bool{}
+var tokens = map[string]bool{
+	"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdXRob3JpemVkIjp0cnVlLCJleHAiOjI4MzYyNzc3NzAsInVzZXJfaWQiOjg2fQ.11XZS_P8Q3o-PhdWY0B8f6nTnrUpPoDl_9OlKVWUlmY": true,
+}
 
 func CreateToken(userId int) (string, error) {
 	atClaims := jwt.MapClaims{
 		"authorized": true,
 		"user_id": userId,
-		"exp": time.Now().Add(time.Minute * 30).Unix(),
+		"exp": time.Now().Add(time.Hour * 60).Unix(),
 	}
 	at := jwt.NewWithClaims(jwt.SigningMethodHS256, atClaims)
 

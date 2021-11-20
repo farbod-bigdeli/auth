@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"example.com/models/database"
+	"example.com/models/finnotech"
+
 	"example.com/models/jwt"
 	"example.com/models/model"
 	"example.com/models/notification"
@@ -19,7 +21,7 @@ import (
 )
 
 
-type SignUpPhone struct {
+type PhoneInput struct {
 	Phone string `json:"phone" form:"phone" binding:"required"`
 }
 
@@ -29,19 +31,21 @@ type VerificationCodes struct {
 	Type			SMSType
 	UserID			int
 	TrackID			string `json:"trackID"`
-	FinnotechToken  string	
+	FinnotechToken  string
+	Expire			time.Time
 }
 
 type SMSType string
 
 const(
-	Login_sms 	SMSType = "login"
-	Signup_sms	SMSType = "signup"
+	Login_sms 				SMSType = "login"
+	Signup_sms				SMSType = "signup"
+	Forgot_Password_sms		SMSType = "forgotPassword"
 )
 
 type SignUpInputs struct {
 	VerificationCodes
-	SignUpPhone
+	PhoneInput
 	Username  string `json:"username" binding:"required"`
 	Ssn       string `json:"ssn" binding:"required"`
 	Locale    string `json:"locale" binding:"required"`
@@ -62,6 +66,17 @@ type LoginVerifyInputs struct {
 	TempCode		int		`json:"tempCode" binding:"required"`
 }
 
+type ForgotPasswordInput struct {
+	Phone			string 	`json:"phone" binding:"required"`
+	VerifyCode		int		`json:"verifyCode" binding:"required"`
+	TempCode		int		`json:"tempCode" binding:"required"`
+}
+
+type ChangePasswordInput struct {
+	OldPassword		string 		`json:"oldPassword" binding:"required"`
+	NewPassword		string		`json:"newPassword" binding:"required,min=2"`
+}
+
 const (
 	FinnotechAuthorize 			string = "https://apibeta.finnotech.ir/dev/v2/oauth2/authorize"
 	FinnotechVerifySMS 			string = "https://apibeta.finnotech.ir/dev/v2/oauth2/verify/sms"
@@ -70,7 +85,7 @@ const (
 )
 
 const (
-	CoreNewUser string = "http://app1.tabachain.com/newuser"
+	CoreNewUser string = "http://YOUR_SERVER:22216/newuser"
 )
 type FinnotechSendSMSResponse struct {
 	Result struct {
@@ -85,7 +100,7 @@ type FinnotechSendSMSResponse struct {
 var PhoneVerifications = make(map[string]VerificationCodes)
 
 func SendSignUpSMS(ct *gin.Context) {
-	var phoneInput SignUpPhone
+	var phoneInput PhoneInput
 	err := ct.ShouldBind(&phoneInput)
 	if err != nil {
 		ct.JSON(http.StatusBadRequest, gin.H{
@@ -155,142 +170,48 @@ func Signup(ct *gin.Context) {
 		return
 	}
 	if checkCode(v, Signup_sms){
-		client := &http.Client{
-			Timeout: time.Second * 10,
-		}
-		finnotechToken := ""
+		finnotech := finnotech.NewFinnotech()
 		val, ok := PhoneVerifications[v.Phone]
 		if !ok || val.FinnotechToken == "" {
-			jsonBody, _ := json.Marshal(map[string]string{
-				"mobile": v.Phone,
-				"otp":	strconv.Itoa(v.VerifyCode),
-				"nid":	v.Ssn,
-				"trackId":	PhoneVerifications[v.Phone].TrackID,	
-	
-			})
-	
-			req, _ := http.NewRequest("POST", FinnotechVerifySMS, bytes.NewBuffer(jsonBody))
-			req.Header.Add("Authorization","Basic " + os.Getenv("FINNOTECH_AUTHORIZE_STRING"))
-			req.Header.Set("Content-Type","application/json")
-			res, err := client.Do(req)
+
+			code, err := finnotech.VerifySMS(v.Phone, strconv.Itoa(v.VerifyCode), v.Ssn, PhoneVerifications[v.Phone].TrackID)
 	
 			if err != nil {
 				ct.JSON(http.StatusBadRequest, gin.H{
-					"message": "Failed",
+					"message": "Failed to verify token",
+					"status": err.Error(),
 				})
 				return
 			}
-			r := struct{
-				Result struct {
-					Code string `json:"code"`
-				} `json:"result"`
-				Status string `json:"status"`
-			}{} 
-			err = json.NewDecoder(res.Body).Decode(&r)
-			if err != nil || r.Status != "DONE" {
-				ct.JSON(http.StatusBadRequest, gin.H{
-					"message": "Failed",
-				})
-				return
-			}
-	
-			jsonBody, _ = json.Marshal(map[string]string{
-				"grant_type": "authorization_code",
-				"code": r.Result.Code,
-				"auth_type": "SMS",
-				"redirect_uri": "REDACTED",
-	
-			})
-			req, _ = http.NewRequest("POST", FinnotechGetToken, bytes.NewBuffer(jsonBody))
-			req.Header.Set("Content-Type","application/json")
-			req.Header.Add("Authorization","Basic " + os.Getenv("FINNOTECH_AUTHORIZE_STRING"))
-			res, err = client.Do(req)
-	
+			err = finnotech.GetToken(code)
 			if err != nil {
-				fmt.Println(err.Error())
 				ct.JSON(http.StatusBadRequest, gin.H{
-					"message": "Failed",
+					"message": "Failed to verify token2",
+					"status": err.Error(),
 				})
 				return
 			}
-			r1 := struct {
-				Result struct {
-					ClientID     string   `json:"clientId"`
-					Scopes       []string `json:"scopes"`
-					LifeTime     string   `json:"lifeTime"`
-					Type         string   `json:"type"`
-					CreationDate string   `json:"creationDate"`
-					UserID       string   `json:"userId"`
-					AuthType     string   `json:"auth_type"`
-					RefreshToken string   `json:"refreshToken"`
-					Bank         string   `json:"bank"`
-					Value        string   `json:"value"`
-				} `json:"result"`
-				Status string `json:"status"`
-			}{}
-			err = json.NewDecoder(res.Body).Decode(&r1)
-			if err != nil || r1.Status != "DONE" {
-				ct.JSON(http.StatusBadRequest, gin.H{
-					"message": "Failed",
-				})
-				return
-			}
+
 			val = PhoneVerifications[v.Phone]
-			val.FinnotechToken = r1.Result.Value
+			val.FinnotechToken = finnotech.Token
 			PhoneVerifications[v.Phone] = val
-			finnotechToken = r1.Result.Value
 	
 		} else {
-			finnotechToken = PhoneVerifications[v.Phone].FinnotechToken
+			finnotech.Token = PhoneVerifications[v.Phone].FinnotechToken
 		}
-	
-		req1, _ := http.NewRequest("GET", FinnotechNidVerification + v.Ssn + "/sms/nidVerification", nil)
-		q := req1.URL.Query()
-		//TODO read env
-		q.Add("birthDate", v.Birthdate)
-		q.Add("gender", v.Gender)
-		q.Add("firstName", v.FName)
-		q.Add("lastName", v.LName)
-	
-	
-		req1.URL.RawQuery = q.Encode()
-		req1.Header.Add("Authorization","bearer " + finnotechToken)
-		res1, err := client.Do(req1)
-		if err != nil || res1.StatusCode != 200 {
+
+		err := finnotech.VerifyNid(v.Ssn, v.Birthdate, v.FName,v.LName, v.Gender)
+		if err != nil {
 			ct.JSON(http.StatusBadRequest, gin.H{
-				"message": "Failed",
+				"message": "failed",
+				"status": err.Error(),
 			})
 			return
 		}
 	
-		r2 := struct {
-			TrackID string `json:"trackId"`
-			Result  struct {
-				InvalidField        int     `json:"invalidField"`
-				NationalCode        string  `json:"nationalCode"`
-				BirthDate           string  `json:"birthDate"`
-				FirstName           string  `json:"firstName"`
-				FirstNameSimilarity float64 `json:"firstNameSimilarity"`
-				LastName            string  `json:"lastName"`
-				LastNameSimilarity  float64 `json:"lastNameSimilarity"`
-				Gender              string  `json:"gender"`
-				GenderSimilarity    int     `json:"genderSimilarity"`
-				DeathStatus         string  `json:"deathStatus"`
-			} `json:"result"`
-			Status string `json:"status"`
-		}{}
-		err = json.NewDecoder(res1.Body).Decode(&r2)
-	
-		if err != nil || r2.Status != "DONE" || r2.Result.GenderSimilarity < 100 || r2.Result.FirstNameSimilarity < 100 || r2.Result.LastNameSimilarity < 100  {
-			ct.JSON(http.StatusBadRequest, gin.H{
-				"message": "information not match",
-			})
-			return 
-		}
-	
 		fmt.Println("store user db")
 		//TODO password
-		password := strconv.Itoa(util.RandInt(10000, 99999))
+		password := strconv.Itoa(util.RandInt(1000000, 9999999))
 		userInfo := &model.UserInfo{
 			User: model.User{
 				Username: v.Username,
@@ -300,27 +221,40 @@ func Signup(ct *gin.Context) {
 			FaName: v.FName,
 			FaFamily: v.LName,
 			NationalID: v.Ssn,
+			Gender: v.Gender,
 		}
 		db := database.GetExec()
 	
 		if db.Create(userInfo).Error == nil {
 			token, _ :=jwt.CreateToken(userInfo.UserID);
+
+
+			jsonBody,_ := json.Marshal(map[string]string{
+				"uid": userInfo.User.UID.String(),
+			})
+			client := &http.Client{
+				Timeout: time.Second * 10,
+			}
+			req, _ := http.NewRequest("POST", CoreNewUser, bytes.NewBuffer(jsonBody))
+			req.Header.Set("Content-Type","application/json")
+			res, err := client.Do(req)
+			if err != nil  {
+				fmt.Println("core new user failed")
+				return
+			}
+			if res.StatusCode != 200 {
+				fmt.Println("uid exists new user failed")
+				return
+			}
+
 			ct.JSON(http.StatusOK, gin.H{
 				"token": token,
 			})
+			
 			go func ()  {
-				message := "password: " + password
-				notification.SendSMS(message,[]string{v.Phone})
+				message := password
+				notification.SendSMS(message,[]string{v.Phone}, "password")
 				delete(PhoneVerifications, v.Phone)
-				jsonBody,_ := json.Marshal(map[string]string{
-					"uid": userInfo.User.UID.String(),
-				})
-				req2, _ := http.NewRequest("POST", CoreNewUser, bytes.NewBuffer(jsonBody))
-				req2.Header.Set("Content-Type","application/json")
-				res2, err := client.Do(req2)
-				if err != nil || res2.StatusCode != 200 {
-					fmt.Println("core new user failed")
-				}
 			}()
 			return
 		}
@@ -328,57 +262,63 @@ func Signup(ct *gin.Context) {
 	
 	ct.JSON(http.StatusBadRequest, gin.H{
 		"message": "Failed",
+		"status": "duplicateUsername",
 	})
 
 
 }
 
 
-func GetUser(ct *gin.Context) {
-	if tokenString := ExtractToken(ct); tokenString != ""{
-		if claims, err := jwt.VerifyToken(tokenString); err == nil {
-			ct.JSON(http.StatusOK, gin.H{
-				"user": claims["user_id"],
-			})
-			return
-		} 
+func ValidateUser(ct *gin.Context) {
+	userID := ct.MustGet("userId").(int)	
+	ct.JSON(http.StatusOK, gin.H{
+		"user": userID,
+	})
 
-	}
 
-	ct.JSON(http.StatusUnauthorized,"Unauthorized.")
 }
 
 func GetUserWithToken(ct *gin.Context) {
-	if tokenString := ExtractToken(ct); tokenString != ""{
-		if claims, err := jwt.VerifyToken(tokenString); err == nil {
-			userID := claims["user_id"]
-			userInfo := model.UserInfo{}
-			db := database.GetExec()
-			result := db.Preload("User").First(&userInfo, "user_id = ?", userID)
-			fmt.Println(userInfo)
-			if result.Error == nil && result.RowsAffected == 1 {
-				//TODO real name 
 
-				ct.JSON(http.StatusOK, gin.H{
-					"firstName": userInfo.FaName, 
-					// userInfo.FaName,
-					"lastName": userInfo.FaFamily,
-					"verified": userInfo.User.IsVerified(),
-					// userInfo.FaFamily,
-					"username": userInfo.User.Username,
-					"userLevel": 1,
-					"uid": userInfo.User.UID,
-				})
-				return
-			}
-			ct.JSON(http.StatusInternalServerError, "Failed")
+	userID := ct.MustGet("userId").(int)
+	userInfo := model.UserInfo{}
+	db := database.GetExec()
+	result := db.Preload("User").First(&userInfo, "user_id = ?", userID)
+	fmt.Println(userInfo)
+	if result.Error == nil && result.RowsAffected == 1 {
+		//TODO real name 
 
-
-		} 
-
+		ct.JSON(http.StatusOK, gin.H{
+			"firstName": userInfo.FaName, 
+			// userInfo.FaName,
+			"lastName": userInfo.FaFamily,
+			"verified": userInfo.User.IsVerified(),
+			// userInfo.FaFamily,
+			"username": userInfo.User.Username,
+			"userLevel": 1,
+			"gender": userInfo.Gender,
+			"phone": userInfo.Phone,
+			"uid": userInfo.User.UID,
+		})
+		return
 	}
 
-	ct.JSON(http.StatusUnauthorized,"Unauthorized.")
+	ct.JSON(http.StatusInternalServerError, "Failed")
+
+}
+
+
+func GetUserId(ct *gin.Context) (int, error) {
+	if tokenString := ExtractToken(ct); tokenString != "" {
+		claims, err := jwt.VerifyToken(tokenString)
+		if err != nil {
+			return 0, err
+		}
+		return int(claims["user_id"].(float64)), nil
+	}
+
+	
+	return 0, fmt.Errorf("token not found")
 }
 
 func LogOut(ct *gin.Context) {
@@ -399,7 +339,11 @@ func checkCode(v interface{}, st SMSType) bool {
 			return true
 		}
 	case LoginVerifyInputs:
-		if val, ok := PhoneVerifications[v.Username]; ok && val.TempCode == v.TempCode && val.VerifyCode == v.VerifyCode && val.Type == st{
+		if val, ok := PhoneVerifications[v.Username]; ok && val.TempCode == v.TempCode && val.VerifyCode == v.VerifyCode && val.Type == st && time.Now().Before(val.Expire){
+			return true
+		}
+	case ForgotPasswordInput:
+		if val, ok := PhoneVerifications[v.Phone]; ok && val.TempCode == v.TempCode && val.VerifyCode == v.VerifyCode && val.Type == st && time.Now().Before(val.Expire){
 			return true
 		}
 	default: 
@@ -434,6 +378,8 @@ func Login(ct *gin.Context) {
 			TempCode: util.RandInt(10000, 99999),
 			Type: Login_sms,
 			UserID: int(user.ID),
+			Expire: time.Now().Add(time.Minute * 2),
+
 	
 		}
 		PhoneVerifications[credentials.Username] = v
@@ -445,8 +391,8 @@ func Login(ct *gin.Context) {
 			ct.JSON(http.StatusOK, gin.H{
 				"tempCode": v.TempCode,
 			})
-			message := "code: " + strconv.Itoa(v.VerifyCode)
-			notification.SendSMS(message,[]string{userInfo.Phone})
+			message := strconv.Itoa(v.VerifyCode)
+			go notification.SendSMS(message,[]string{userInfo.Phone}, "code")
 	
 			return
 		}
@@ -487,8 +433,122 @@ func VerifyLogin(ct *gin.Context) {
 
 }
 
+func SendForgotPasswordSMS(ct *gin.Context)  {
+	var in PhoneInput
+	if err := ct.ShouldBind(&in) ; err != nil {
+		ct.JSON(http.StatusBadRequest, gin.H{
+			"message": "Wrong Input",
+		})
+		return
+	}
+	v := VerificationCodes{
+		VerifyCode: util.RandInt(10000, 99999),
+		TempCode: 12345,
+		// util.RandInt(10000, 99999),
+		Type: Forgot_Password_sms,
+		Expire: time.Now().Add(2 * time.Minute),
+
+	}
+	PhoneVerifications[in.Phone] = v
+	message := strconv.Itoa(v.VerifyCode)
+	go notification.SendSMS(message, []string{in.Phone}, "forgotPassword")
+
+	ct.JSON(http.StatusOK, gin.H{
+			"message": "successful",
+	})
+
+}
+
+func VerifyForgotPassword(ct *gin.Context) {
+	var in ForgotPasswordInput
+
+	if err := ct.ShouldBind(&in) ; err != nil {
+		fmt.Println(in)
+		ct.JSON(http.StatusBadRequest, gin.H{
+			"message": "Wrong Input",
+		})
+		return
+	}
+
+	if checkCode(in, Forgot_Password_sms) {
+		password := strconv.Itoa(util.RandInt(100000, 999999))
+		db := database.GetExec()
+		var userInfo model.UserInfo
+
+		if db.Preload("User").Last(&userInfo, "phone = ?", in.Phone).Error != nil {
+			ct.JSON(http.StatusBadRequest, gin.H{
+				"message": "phone not found",
+			})
+			return
+		}
+		u := model.User{
+			Password: password,
+		}
+		if db.Model(&u).Where("id = ?", userInfo.UserID).Updates(&u).Error != nil {
+			ct.JSON(http.StatusBadRequest, gin.H{
+				"message": "server error",
+			})
+			return
+		}
+		message := password
+		go notification.SendSMS(message, []string{in.Phone}, "password")
+		token, _ := jwt.CreateToken(userInfo.UserID);
+		delete(PhoneVerifications, in.Phone)
+
+		ct.JSON(http.StatusOK, gin.H{
+			"token": token,
+		})
+		return
+
+	}
+	ct.JSON(http.StatusBadRequest, gin.H{
+		"message": "wrong code",
+	})
+
+}
 
 
+func ChangePassword(ct *gin.Context) {
+	var in ChangePasswordInput
+	userId := ct.MustGet("userId").(int)
+	if err := ct.ShouldBind(&in) ; err != nil {
+		ct.JSON(http.StatusBadRequest, gin.H{
+			"message": "Wrong Input",
+		})
+		return
+	}
+	db := database.GetExec()
+	u := model.User{}
+	if err := db.First(&u, userId).Error; err != nil {
+		ct.JSON(http.StatusBadRequest, gin.H{
+			"message": "user not found",
+		})
+		return
+	}
+	if err := u.CheckPassword(in.OldPassword); err != nil {
+		ct.JSON(http.StatusBadRequest, gin.H{
+			"message": "wrong password",
+		})
+		return
+	}
+
+	user := model.User{}
+	user.Password = in.NewPassword
+	user.ID = u.ID 
+	if err := db.Debug().Model(&user).Updates(&user).Error; err != nil {
+		ct.JSON(http.StatusBadRequest, gin.H{
+			"message": "server error",
+		})
+		return
+	}
+
+	ct.JSON(http.StatusOK, gin.H{
+			"message": "successful",
+		})
+
+
+
+}
 
 func ExtractToken (ct *gin.Context) string {
 	bearToken := ct.GetHeader("Authorization")
@@ -498,3 +558,5 @@ func ExtractToken (ct *gin.Context) string {
 	}
 	return ""
 }
+
+

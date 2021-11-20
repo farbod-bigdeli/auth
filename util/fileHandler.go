@@ -6,14 +6,17 @@ import (
 	"os"
 	"strings"
 
+	"example.com/models/config"
 	"github.com/gin-gonic/gin"
 	uuid "github.com/satori/go.uuid"
 )
 
-const BasePath = "/app/storage/"
 
 func UploadPhoto(c gin.Context, path string) (string, error) {
+	BasePath := config.Config.BaseFilePath
+
 	file, header, err := c.Request.FormFile("photo")
+	fmt.Println("\n",header.Size)
 	mimeArr := strings.Split(header.Header["Content-Type"][0], "/")
 	mime := mimeArr[1]
 	if err != nil {
@@ -21,7 +24,11 @@ func UploadPhoto(c gin.Context, path string) (string, error) {
 	}
 
 	if mime != "jpeg" && mime != "png" {
-		return "", fmt.Errorf("wrong type")
+		return "", fmt.Errorf("WrongType")
+	}
+	if header.Size > 2000000 {
+		return "", fmt.Errorf("SizeExceed")
+
 	}
 	
     if _, err = os.Stat(BasePath + path); os.IsNotExist(err) {
