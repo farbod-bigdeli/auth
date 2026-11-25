@@ -7,3 +7,10 @@ storage/
 /test1
 /front
 /models
+*.tar
+*.tar.gz
+/main
+/test
+/test1
+/front
+/models
